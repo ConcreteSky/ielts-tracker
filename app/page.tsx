@@ -12,95 +12,65 @@ import {
   YAxis,
 } from "recharts";
 
-type ScoreKey = "listening" | "reading" | "writing" | "speaking";
-type TestEntry = {
-  id: string;
-  attempt: number;
-  writingTask: "Task 1" | "Task 2";
-  listening: number;
-  reading: number;
-  writing: number;
-  speaking: number;
-  overall: number;
-  notes: string;
-};
-type FormValues = Omit<TestEntry, "id" | "overall">;
-type PracticeSkill = "Writing" | "Speaking" | "Listening" | "Reading";
+type Skill = "Writing" | "Speaking" | "Listening" | "Reading";
+type WritingTask = "Task 1" | "Task 2";
 type PracticeEntry = {
   id: string;
-  skill: PracticeSkill;
+  skill: Skill;
   attempt: number;
   title: string;
   score: number;
   notes: string;
+  writingTask?: WritingTask;
 };
-const storageKey = "ielts-score-tracker.entries";
-const practiceStorageKey = "ielts-score-tracker.practice-entries";
+
+const storageKey = "ielts-score-tracker.practice-entries";
 const scores = Array.from({ length: 19 }, (_, index) => index / 2);
-const sectionNames: Record<ScoreKey, string> = {
-  listening: "Listening",
-  reading: "Reading",
-  writing: "Writing",
-  speaking: "Speaking",
+const skills: Skill[] = ["Writing", "Speaking", "Listening", "Reading"];
+const colors: Record<Skill, string> = {
+  Writing: "#a78bfa",
+  Speaking: "#f472b6",
+  Listening: "#38bdf8",
+  Reading: "#a3e635",
 };
-const colors: Record<ScoreKey | "overall", string> = {
-  listening: "#8b5cf6",
-  reading: "#38bdf8",
-  writing: "#f59e0b",
-  speaking: "#f472b6",
-  overall: "#a3e635",
-};
-const emptyForm = (attempt = 1): FormValues => ({
-  attempt,
-  writingTask: "Task 1",
-  listening: 0,
-  reading: 0,
-  writing: 0,
-  speaking: 0,
-  notes: "",
-});
-const emptyPracticeForm = (): Omit<PracticeEntry, "id"> => ({
+const taskOneTitles = new Set([
+  "Graph essay",
+  "Bar chart essay",
+  "Pie chart essay",
+  "Maps essay",
+]);
+const emptyForm = (): Omit<PracticeEntry, "id"> => ({
   skill: "Writing",
   attempt: 1,
   title: "",
   score: 0,
   notes: "",
+  writingTask: "Task 1",
 });
-const overallScore = (v: Pick<TestEntry, ScoreKey>) =>
-  Math.round(((v.listening + v.reading + v.writing + v.speaking) / 4) * 2) / 2;
-const band = (v: number) => v.toFixed(1);
+const band = (value: number) => value.toFixed(1);
+const inferTask = (entry: PracticeEntry): WritingTask | undefined =>
+  entry.skill === "Writing"
+    ? (entry.writingTask ??
+      (taskOneTitles.has(entry.title) ? "Task 1" : "Task 2"))
+    : undefined;
 
 export default function Home() {
-  const [entries, setEntries] = useState<TestEntry[]>([]);
-  const [practiceEntries, setPracticeEntries] = useState<PracticeEntry[]>([]);
-  const [form, setForm] = useState<FormValues>(emptyForm);
-  const [practiceForm, setPracticeForm] =
-    useState<Omit<PracticeEntry, "id">>(emptyPracticeForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [entries, setEntries] = useState<PracticeEntry[]>([]);
+  const [form, setForm] = useState<Omit<PracticeEntry, "id">>(emptyForm);
   const [hydrated, setHydrated] = useState(false);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      const savedPracticeEntries = localStorage.getItem(practiceStorageKey);
       if (saved) {
-        const previousEntries = JSON.parse(saved) as Array<
-          TestEntry & { date?: string }
-        >;
+        const restored = JSON.parse(saved) as PracticeEntry[];
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setEntries(
-          previousEntries.map((entry, index) => ({
+          restored.map((entry) => ({
             ...entry,
-            attempt: entry.attempt ?? index + 1,
-            writingTask: entry.writingTask ?? "Task 1",
+            writingTask: inferTask(entry),
           })),
         );
-      }
-      if (savedPracticeEntries) {
-        const restoredPracticeEntries = JSON.parse(
-          savedPracticeEntries,
-        ) as PracticeEntry[];
-        setPracticeEntries(restoredPracticeEntries);
       }
     } catch {
       localStorage.removeItem(storageKey);
@@ -111,79 +81,45 @@ export default function Home() {
   useEffect(() => {
     if (hydrated) localStorage.setItem(storageKey, JSON.stringify(entries));
   }, [entries, hydrated]);
-  useEffect(() => {
-    if (hydrated)
-      localStorage.setItem(practiceStorageKey, JSON.stringify(practiceEntries));
-  }, [practiceEntries, hydrated]);
-  const overall = overallScore(form);
-  const sorted = useMemo(
-    () => [...entries].sort((a, b) => b.attempt - a.attempt),
+
+  const sortedEntries = useMemo(
+    () =>
+      [...entries].sort(
+        (a, b) => a.skill.localeCompare(b.skill) || a.attempt - b.attempt,
+      ),
     [entries],
   );
   const chartData = useMemo(
     () =>
-      [...entries]
-        .sort((a, b) => a.attempt - b.attempt)
-        .map((entry) => ({ ...entry, label: `Writing #${entry.attempt}` })),
-    [entries],
+      sortedEntries.map((entry) => ({
+        label: `${entry.skill} #${entry.attempt}`,
+        [entry.skill]: entry.score,
+      })),
+    [sortedEntries],
   );
-  const sortedPracticeEntries = useMemo(
-    () =>
-      [...practiceEntries].sort(
-        (a, b) => a.skill.localeCompare(b.skill) || a.attempt - b.attempt,
-      ),
-    [practiceEntries],
-  );
-  const keys = Object.keys(sectionNames) as ScoreKey[];
-  function updateScore(key: ScoreKey, value: string) {
-    setForm((v) => ({ ...v, [key]: Number(value) }));
-  }
-  function submitPractice(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPracticeEntries((current) => [
-      ...current,
-      { ...practiceForm, id: crypto.randomUUID() },
-    ]);
-    setPracticeForm((current) => ({
-      ...emptyPracticeForm(),
-      skill: current.skill,
-      attempt: current.attempt + 1,
-    }));
-  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const entry: TestEntry = {
-      ...form,
-      id: editingId ?? crypto.randomUUID(),
-      overall: overallScore(form),
-    };
-    setEntries((v) =>
-      editingId
-        ? v.map((item) => (item.id === editingId ? entry : item))
-        : [...v, entry],
-    );
-    setForm(emptyForm(Math.max(0, ...entries.map((item) => item.attempt)) + 1));
-    setEditingId(null);
-  }
-  function edit(entry: TestEntry) {
-    const { id, overall: ignored, ...values } = entry;
-    void ignored;
-    setForm(values);
-    setEditingId(id);
-    scrollTo({ top: 0, behavior: "smooth" });
-  }
-  function cancel() {
-    setForm(
-      emptyForm(Math.max(0, ...entries.map((entry) => entry.attempt)) + 1),
-    );
-    setEditingId(null);
+    setEntries((current) => [
+      ...current,
+      {
+        ...form,
+        id: crypto.randomUUID(),
+        writingTask: form.skill === "Writing" ? form.writingTask : undefined,
+      },
+    ]);
+    setForm((current) => ({
+      ...emptyForm(),
+      skill: current.skill,
+      attempt: current.attempt + 1,
+      writingTask:
+        current.skill === "Writing" ? current.writingTask : undefined,
+    }));
   }
   function remove(id: string) {
-    if (confirm("Delete this IELTS test entry?")) {
-      setEntries((v) => v.filter((entry) => entry.id !== id));
-      if (editingId === id) cancel();
-    }
+    if (confirm("Delete this practice entry?"))
+      setEntries((current) => current.filter((entry) => entry.id !== id));
   }
+
   return (
     <main className="min-h-screen bg-[#09090b] text-zinc-100 selection:bg-violet-500/40">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
@@ -193,62 +129,65 @@ export default function Home() {
               Personal analytics
             </p>
             <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              IELTS score tracker
+              IELTS practice tracker
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-400">
-              Keep every exam result, spot your progress, and leave a note for
-              your future self.
+              Track every individual essay and skill attempt — no combined
+              overall scores.
             </p>
           </div>
           <div className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.08] px-4 py-3 text-sm text-violet-100">
             <span className="text-violet-300">{entries.length}</span>{" "}
-            {entries.length === 1 ? "attempt logged" : "attempts logged"}
+            {entries.length === 1 ? "piece logged" : "pieces logged"}
           </div>
         </header>
-        <section className="mb-6 rounded-2xl border border-violet-400/20 bg-violet-400/[0.05] p-5 sm:p-7">
-          <div className="mb-5">
+        <section className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.05] p-5 sm:p-7">
+          <div className="mb-6">
             <h2 className="text-lg font-semibold text-white">
-              Practice score log
+              Log a practice result
             </h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Log individual Writing, Speaking, Listening, or Reading practice.
-              Notes are optional.
+              Add the score for one specific essay, speaking, listening, or
+              reading attempt.
             </p>
           </div>
           <form
-            onSubmit={submitPractice}
+            onSubmit={submit}
             className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
           >
             <label className="text-sm font-medium text-zinc-300">
               Skill
               <select
-                aria-label="Practice skill"
-                value={practiceForm.skill}
+                aria-label="Skill"
+                value={form.skill}
                 onChange={(e) =>
-                  setPracticeForm((v) => ({
-                    ...v,
-                    skill: e.target.value as PracticeSkill,
+                  setForm((current) => ({
+                    ...current,
+                    skill: e.target.value as Skill,
+                    writingTask:
+                      e.target.value === "Writing"
+                        ? (current.writingTask ?? "Task 1")
+                        : undefined,
                   }))
                 }
                 className="field mt-2"
               >
-                <option>Writing</option>
-                <option>Speaking</option>
-                <option>Listening</option>
-                <option>Reading</option>
+                {skills.map((skill) => (
+                  <option key={skill}>{skill}</option>
+                ))}
               </select>
             </label>
             <label className="text-sm font-medium text-zinc-300">
               Attempt #
               <input
-                aria-label="Practice attempt"
+                aria-label="Attempt number"
                 required
                 min="1"
                 type="number"
-                value={practiceForm.attempt}
+                value={form.attempt}
                 onChange={(e) =>
-                  setPracticeForm((v) => ({
-                    ...v,
+                  setForm((current) => ({
+                    ...current,
                     attempt: Number(e.target.value),
                   }))
                 }
@@ -259,9 +198,10 @@ export default function Home() {
               Essay type / label
               <input
                 aria-label="Practice label"
-                value={practiceForm.title}
+                required
+                value={form.title}
                 onChange={(e) =>
-                  setPracticeForm((v) => ({ ...v, title: e.target.value }))
+                  setForm((current) => ({ ...current, title: e.target.value }))
                 }
                 placeholder="e.g. Opinion essay"
                 className="field mt-2"
@@ -270,11 +210,11 @@ export default function Home() {
             <label className="text-sm font-medium text-zinc-300">
               Band score
               <select
-                aria-label="Practice score"
-                value={practiceForm.score}
+                aria-label="Band score"
+                value={form.score}
                 onChange={(e) =>
-                  setPracticeForm((v) => ({
-                    ...v,
+                  setForm((current) => ({
+                    ...current,
                     score: Number(e.target.value),
                   }))
                 }
@@ -291,183 +231,35 @@ export default function Home() {
               type="submit"
               className="self-end rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-400"
             >
-              Add practice score
+              Add result
             </button>
           </form>
-        </section>
-        {practiceEntries.length > 0 && (
-          <section className="mb-6 rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
-            <h2 className="text-lg font-semibold text-white">
-              Practice entries
-            </h2>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedPracticeEntries.map((entry) => (
-                <article
-                  key={entry.id}
-                  className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-violet-300">
-                        {entry.skill} · #{entry.attempt}
-                      </p>
-                      <p className="mt-2 font-medium text-white">
-                        {entry.title || "Practice attempt"}
-                      </p>
-                    </div>
-                    <span className="rounded-lg bg-lime-300/10 px-2.5 py-1 text-sm font-semibold text-lime-300">
-                      {band(entry.score)}
-                    </span>
-                  </div>
-                  {entry.notes && (
-                    <p className="mt-3 text-sm text-zinc-400">{entry.notes}</p>
-                  )}
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <form
-            onSubmit={submit}
-            className="rounded-2xl border border-white/[0.09] bg-zinc-900/70 p-5 shadow-2xl shadow-black/20 sm:p-7"
-          >
-            <div className="mb-7 flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-white">
-                  {editingId ? "Edit writing attempt" : "Log a writing attempt"}
-                </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Scores use official half-band increments.
-                </p>
-              </div>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={cancel}
-                  className="text-sm text-zinc-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-            <div className="grid max-w-md grid-cols-2 gap-4">
-              <label className="text-sm font-medium text-zinc-300">
-                Writing attempt #
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  value={form.attempt}
-                  onChange={(e) =>
-                    setForm((v) => ({ ...v, attempt: Number(e.target.value) }))
-                  }
-                  className="field mt-2"
-                />
-              </label>
-              <label className="text-sm font-medium text-zinc-300">
-                Writing task
-                <select
-                  value={form.writingTask}
-                  onChange={(e) =>
-                    setForm((v) => ({
-                      ...v,
-                      writingTask: e.target.value as TestEntry["writingTask"],
-                    }))
-                  }
-                  className="field mt-2"
-                >
-                  <option>Task 1</option>
-                  <option>Task 2</option>
-                </select>
-              </label>
-            </div>
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {keys.map((key) => (
-                <label key={key} className="text-sm font-medium text-zinc-300">
-                  {sectionNames[key]}
-                  <select
-                    value={form[key]}
-                    onChange={(e) => updateScore(key, e.target.value)}
-                    className="field mt-2"
-                  >
-                    {scores.map((score) => (
-                      <option key={score} value={score}>
-                        {band(score)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <div className="mt-6 flex items-center justify-between rounded-xl border border-lime-300/15 bg-lime-300/[0.06] px-4 py-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-lime-300/80">
-                  Overall band
-                </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Automatically rounded to nearest 0.5
-                </p>
-              </div>
-              <span className="text-3xl font-semibold tracking-tight text-lime-300">
-                {band(overall)}
-              </span>
-            </div>
-            <label className="mt-6 block text-sm font-medium text-zinc-300">
-              Mistakes & improvements{" "}
-              <span className="font-normal text-zinc-600">(optional)</span>
-              <textarea
-                value={form.notes}
+          {form.skill === "Writing" && (
+            <label className="mt-4 block max-w-xs text-sm font-medium text-zinc-300">
+              Writing task
+              <select
+                aria-label="Writing task"
+                value={form.writingTask}
                 onChange={(e) =>
-                  setForm((v) => ({ ...v, notes: e.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    writingTask: e.target.value as WritingTask,
+                  }))
                 }
-                placeholder="What mistakes did you make? What will you change in your next writing attempt?"
-                rows={4}
-                className="field mt-2 resize-y"
-              />
+                className="field mt-2"
+              >
+                <option>Task 1</option>
+                <option>Task 2</option>
+              </select>
             </label>
-            <button
-              type="submit"
-              className="mt-6 w-full rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:ring-offset-2 focus:ring-offset-zinc-900"
-            >
-              {editingId ? "Save changes" : "Add writing attempt"}
-            </button>
-          </form>
-          <aside className="rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Current best
-            </p>
-            {entries.length ? (
-              <>
-                <p className="mt-4 text-5xl font-semibold tracking-tight text-lime-300">
-                  {band(Math.max(...entries.map((e) => e.overall)))}
-                </p>
-                <p className="mt-2 text-sm text-zinc-500">overall band score</p>
-                <div className="mt-8 space-y-4 border-t border-white/[0.08] pt-5 text-sm">
-                  {keys.map((key) => (
-                    <div key={key} className="flex justify-between">
-                      <span className="text-zinc-500">{sectionNames[key]}</span>
-                      <span className="font-medium text-zinc-200">
-                        {band(Math.max(...entries.map((e) => e[key])))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="mt-4 text-sm leading-6 text-zinc-500">
-                Your strongest scores will appear here after you log your first
-                writing attempt.
-              </p>
-            )}
-          </aside>
+          )}
         </section>
         <section className="mt-6 rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
           <h2 className="text-lg font-semibold text-white">
-            Progress by writing attempt
+            Progress by practice piece
           </h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Every section, plus your overall band.
+            Each line tracks one skill independently.
           </p>
           <div className="mt-7 h-72 w-full sm:h-80">
             {chartData.length ? (
@@ -501,130 +293,85 @@ export default function Home() {
                     itemStyle={{ color: "#e4e4e7" }}
                   />
                   <Legend wrapperStyle={{ paddingTop: 16, fontSize: 12 }} />
-                  {keys.map((key) => (
+                  {skills.map((skill) => (
                     <Line
-                      key={key}
+                      key={skill}
                       type="monotone"
-                      dataKey={key}
-                      name={sectionNames[key]}
-                      stroke={colors[key]}
+                      dataKey={skill}
+                      connectNulls
+                      name={skill}
+                      stroke={colors[skill]}
                       strokeWidth={2}
-                      dot={{ r: 3, fill: colors[key] }}
+                      dot={{ r: 3, fill: colors[skill] }}
                       activeDot={{ r: 5 }}
                     />
                   ))}
-                  <Line
-                    type="monotone"
-                    dataKey="overall"
-                    name="Overall"
-                    stroke={colors.overall}
-                    strokeWidth={3}
-                    dot={{ r: 4, fill: colors.overall }}
-                    activeDot={{ r: 6 }}
-                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/[0.1] text-sm text-zinc-600">
-                Add your first writing attempt to see your score history.
+                Add your first practice result to see progress.
               </div>
             )}
           </div>
         </section>
         <section className="mt-10">
-          <div className="mb-5">
-            <h2 className="text-lg font-semibold text-white">
-              Writing history
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              Highest attempt number first.
-            </p>
-          </div>
-          {sorted.length ? (
-            <div className="space-y-3">
-              {sorted.map((entry) => (
+          <h2 className="text-lg font-semibold text-white">Practice history</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Each piece is kept separate. Writing entries show Task 1 or Task 2.
+          </p>
+          {sortedEntries.length ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedEntries.map((entry) => (
                 <article
                   key={entry.id}
-                  className="overflow-hidden rounded-2xl border border-white/[0.09] bg-zinc-900/50"
+                  className="rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5"
                 >
-                  <button
-                    onClick={() =>
-                      setExpandedId((v) => (v === entry.id ? null : entry.id))
-                    }
-                    className="grid w-full grid-cols-[1fr_auto] gap-4 p-5 text-left transition hover:bg-white/[0.02] sm:grid-cols-[180px_1fr_auto] sm:items-center"
-                  >
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium text-white">
-                        Writing #{entry.attempt} · {entry.writingTask}
+                      <p className="text-xs font-semibold uppercase tracking-wider text-violet-300">
+                        {entry.skill} · Attempt #{entry.attempt}
+                        {entry.writingTask ? ` · ${entry.writingTask}` : ""}
                       </p>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        {entry.notes ? "Notes saved" : "No notes"}
+                      <p className="mt-2 font-medium text-white">
+                        {entry.title}
                       </p>
                     </div>
-                    <div className="hidden gap-4 sm:flex">
-                      {keys.map((key) => (
-                        <div key={key}>
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                            {sectionNames[key].slice(0, 3)}
-                          </p>
-                          <p className="mt-1 text-sm font-medium text-zinc-200">
-                            {band(entry[key])}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="rounded-lg bg-lime-300/10 px-3 py-2 text-sm font-semibold text-lime-300">
-                        {band(entry.overall)}
-                      </span>
-                      <span className="text-zinc-600">
-                        {expandedId === entry.id ? "−" : "+"}
-                      </span>
-                    </div>
+                    <span className="rounded-lg bg-lime-300/10 px-3 py-2 text-sm font-semibold text-lime-300">
+                      {band(entry.score)}
+                    </span>
+                  </div>
+                  <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                    Mistakes & improvements
+                    <textarea
+                      aria-label={`Notes for ${entry.title}`}
+                      value={entry.notes}
+                      onChange={(e) =>
+                        setEntries((current) =>
+                          current.map((item) =>
+                            item.id === entry.id
+                              ? { ...item, notes: e.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                      placeholder="Add your notes..."
+                      rows={3}
+                      className="field mt-2 normal-case tracking-normal"
+                    />
+                  </label>
+                  <button
+                    onClick={() => remove(entry.id)}
+                    className="mt-3 text-sm text-rose-300 hover:text-rose-200"
+                  >
+                    Delete
                   </button>
-                  {expandedId === entry.id && (
-                    <div className="border-t border-white/[0.07] px-5 py-5 sm:px-6">
-                      <div className="grid grid-cols-4 gap-3 sm:hidden">
-                        {keys.map((key) => (
-                          <div
-                            key={key}
-                            className="rounded-lg bg-white/[0.03] p-2"
-                          >
-                            <p className="text-[10px] uppercase text-zinc-600">
-                              {sectionNames[key].slice(0, 3)}
-                            </p>
-                            <p className="mt-1 text-sm text-zinc-200">
-                              {band(entry[key])}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                      <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-zinc-400">
-                        {entry.notes ||
-                          "No mistakes or improvement notes were added for this attempt."}
-                      </p>
-                      <div className="mt-5 flex gap-3">
-                        <button
-                          onClick={() => edit(entry)}
-                          className="rounded-lg border border-white/[0.12] px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.06]"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => remove(entry.id)}
-                          className="rounded-lg px-3 py-2 text-sm text-rose-300 hover:bg-rose-400/10"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </article>
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/[0.1] py-12 text-center text-sm text-zinc-600">
-              Your logged exams will appear here.
+            <div className="mt-5 rounded-2xl border border-dashed border-white/[0.1] py-12 text-center text-sm text-zinc-600">
+              Your practice scores will appear here.
             </div>
           )}
         </section>
