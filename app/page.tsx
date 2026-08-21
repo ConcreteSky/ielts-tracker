@@ -25,7 +25,17 @@ type TestEntry = {
   notes: string;
 };
 type FormValues = Omit<TestEntry, "id" | "overall">;
+type PracticeSkill = "Writing" | "Speaking" | "Listening" | "Reading";
+type PracticeEntry = {
+  id: string;
+  skill: PracticeSkill;
+  attempt: number;
+  title: string;
+  score: number;
+  notes: string;
+};
 const storageKey = "ielts-score-tracker.entries";
+const practiceStorageKey = "ielts-score-tracker.practice-entries";
 const scores = Array.from({ length: 19 }, (_, index) => index / 2);
 const sectionNames: Record<ScoreKey, string> = {
   listening: "Listening",
@@ -49,19 +59,30 @@ const emptyForm = (attempt = 1): FormValues => ({
   speaking: 0,
   notes: "",
 });
+const emptyPracticeForm = (): Omit<PracticeEntry, "id"> => ({
+  skill: "Writing",
+  attempt: 1,
+  title: "",
+  score: 0,
+  notes: "",
+});
 const overallScore = (v: Pick<TestEntry, ScoreKey>) =>
   Math.round(((v.listening + v.reading + v.writing + v.speaking) / 4) * 2) / 2;
 const band = (v: number) => v.toFixed(1);
 
 export default function Home() {
   const [entries, setEntries] = useState<TestEntry[]>([]);
+  const [practiceEntries, setPracticeEntries] = useState<PracticeEntry[]>([]);
   const [form, setForm] = useState<FormValues>(emptyForm);
+  const [practiceForm, setPracticeForm] =
+    useState<Omit<PracticeEntry, "id">>(emptyPracticeForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
+      const savedPracticeEntries = localStorage.getItem(practiceStorageKey);
       if (saved) {
         const previousEntries = JSON.parse(saved) as Array<
           TestEntry & { date?: string }
@@ -75,6 +96,12 @@ export default function Home() {
           })),
         );
       }
+      if (savedPracticeEntries) {
+        const restoredPracticeEntries = JSON.parse(
+          savedPracticeEntries,
+        ) as PracticeEntry[];
+        setPracticeEntries(restoredPracticeEntries);
+      }
     } catch {
       localStorage.removeItem(storageKey);
     } finally {
@@ -84,6 +111,10 @@ export default function Home() {
   useEffect(() => {
     if (hydrated) localStorage.setItem(storageKey, JSON.stringify(entries));
   }, [entries, hydrated]);
+  useEffect(() => {
+    if (hydrated)
+      localStorage.setItem(practiceStorageKey, JSON.stringify(practiceEntries));
+  }, [practiceEntries, hydrated]);
   const overall = overallScore(form);
   const sorted = useMemo(
     () => [...entries].sort((a, b) => b.attempt - a.attempt),
@@ -96,9 +127,28 @@ export default function Home() {
         .map((entry) => ({ ...entry, label: `Writing #${entry.attempt}` })),
     [entries],
   );
+  const sortedPracticeEntries = useMemo(
+    () =>
+      [...practiceEntries].sort(
+        (a, b) => a.skill.localeCompare(b.skill) || a.attempt - b.attempt,
+      ),
+    [practiceEntries],
+  );
   const keys = Object.keys(sectionNames) as ScoreKey[];
   function updateScore(key: ScoreKey, value: string) {
     setForm((v) => ({ ...v, [key]: Number(value) }));
+  }
+  function submitPractice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPracticeEntries((current) => [
+      ...current,
+      { ...practiceForm, id: crypto.randomUUID() },
+    ]);
+    setPracticeForm((current) => ({
+      ...emptyPracticeForm(),
+      skill: current.skill,
+      attempt: current.attempt + 1,
+    }));
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -155,6 +205,128 @@ export default function Home() {
             {entries.length === 1 ? "attempt logged" : "attempts logged"}
           </div>
         </header>
+        <section className="mb-6 rounded-2xl border border-violet-400/20 bg-violet-400/[0.05] p-5 sm:p-7">
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold text-white">
+              Practice score log
+            </h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Log individual Writing, Speaking, Listening, or Reading practice.
+              Notes are optional.
+            </p>
+          </div>
+          <form
+            onSubmit={submitPractice}
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+          >
+            <label className="text-sm font-medium text-zinc-300">
+              Skill
+              <select
+                aria-label="Practice skill"
+                value={practiceForm.skill}
+                onChange={(e) =>
+                  setPracticeForm((v) => ({
+                    ...v,
+                    skill: e.target.value as PracticeSkill,
+                  }))
+                }
+                className="field mt-2"
+              >
+                <option>Writing</option>
+                <option>Speaking</option>
+                <option>Listening</option>
+                <option>Reading</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium text-zinc-300">
+              Attempt #
+              <input
+                aria-label="Practice attempt"
+                required
+                min="1"
+                type="number"
+                value={practiceForm.attempt}
+                onChange={(e) =>
+                  setPracticeForm((v) => ({
+                    ...v,
+                    attempt: Number(e.target.value),
+                  }))
+                }
+                className="field mt-2"
+              />
+            </label>
+            <label className="text-sm font-medium text-zinc-300">
+              Essay type / label
+              <input
+                aria-label="Practice label"
+                value={practiceForm.title}
+                onChange={(e) =>
+                  setPracticeForm((v) => ({ ...v, title: e.target.value }))
+                }
+                placeholder="e.g. Opinion essay"
+                className="field mt-2"
+              />
+            </label>
+            <label className="text-sm font-medium text-zinc-300">
+              Band score
+              <select
+                aria-label="Practice score"
+                value={practiceForm.score}
+                onChange={(e) =>
+                  setPracticeForm((v) => ({
+                    ...v,
+                    score: Number(e.target.value),
+                  }))
+                }
+                className="field mt-2"
+              >
+                {scores.map((score) => (
+                  <option key={score} value={score}>
+                    {band(score)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="self-end rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-400"
+            >
+              Add practice score
+            </button>
+          </form>
+        </section>
+        {practiceEntries.length > 0 && (
+          <section className="mb-6 rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
+            <h2 className="text-lg font-semibold text-white">
+              Practice entries
+            </h2>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedPracticeEntries.map((entry) => (
+                <article
+                  key={entry.id}
+                  className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-violet-300">
+                        {entry.skill} · #{entry.attempt}
+                      </p>
+                      <p className="mt-2 font-medium text-white">
+                        {entry.title || "Practice attempt"}
+                      </p>
+                    </div>
+                    <span className="rounded-lg bg-lime-300/10 px-2.5 py-1 text-sm font-semibold text-lime-300">
+                      {band(entry.score)}
+                    </span>
+                  </div>
+                  {entry.notes && (
+                    <p className="mt-3 text-sm text-zinc-400">{entry.notes}</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
           <form
             onSubmit={submit}
@@ -180,26 +352,35 @@ export default function Home() {
               )}
             </div>
             <div className="grid max-w-md grid-cols-2 gap-4">
-            <label className="text-sm font-medium text-zinc-300">
-              Writing attempt #
-              <input
-                required
-                type="number"
-                min="1"
-                value={form.attempt}
-                onChange={(e) =>
-                  setForm((v) => ({ ...v, attempt: Number(e.target.value) }))
-                }
-                className="field mt-2"
-              />
-            </label>
-            <label className="text-sm font-medium text-zinc-300">
-              Writing task
-              <select value={form.writingTask} onChange={(e) => setForm((v) => ({ ...v, writingTask: e.target.value as TestEntry["writingTask"] }))} className="field mt-2">
-                <option>Task 1</option>
-                <option>Task 2</option>
-              </select>
-            </label>
+              <label className="text-sm font-medium text-zinc-300">
+                Writing attempt #
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  value={form.attempt}
+                  onChange={(e) =>
+                    setForm((v) => ({ ...v, attempt: Number(e.target.value) }))
+                  }
+                  className="field mt-2"
+                />
+              </label>
+              <label className="text-sm font-medium text-zinc-300">
+                Writing task
+                <select
+                  value={form.writingTask}
+                  onChange={(e) =>
+                    setForm((v) => ({
+                      ...v,
+                      writingTask: e.target.value as TestEntry["writingTask"],
+                    }))
+                  }
+                  className="field mt-2"
+                >
+                  <option>Task 1</option>
+                  <option>Task 2</option>
+                </select>
+              </label>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
               {keys.map((key) => (
@@ -352,7 +533,9 @@ export default function Home() {
         </section>
         <section className="mt-10">
           <div className="mb-5">
-            <h2 className="text-lg font-semibold text-white">Writing history</h2>
+            <h2 className="text-lg font-semibold text-white">
+              Writing history
+            </h2>
             <p className="mt-1 text-sm text-zinc-500">
               Highest attempt number first.
             </p>
