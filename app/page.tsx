@@ -62,11 +62,11 @@ export default function Home() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved) {
         const previousEntries = JSON.parse(saved) as Array<
           TestEntry & { date?: string }
         >;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setEntries(
           previousEntries.map((entry, index) => ({
             ...entry,
