@@ -451,16 +451,25 @@ export default function Home() {
                       {band(entry.score)}
                     </span>
                   </div>
-                  {entry.notes && (
-                    <div className="mt-4 rounded-xl bg-white/[0.04] p-3">
-                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-                        Notes & improvements
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
-                        {entry.notes}
-                      </p>
-                    </div>
-                  )}
+                  <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                    Notes & improvements
+                    <textarea
+                      aria-label={`Notes for ${entry.title}`}
+                      value={entry.notes}
+                      onChange={(e) =>
+                        setEntries((current) =>
+                          current.map((item) =>
+                            item.id === entry.id
+                              ? { ...item, notes: e.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                      placeholder="Add or revise your notes..."
+                      rows={3}
+                      className="field mt-2 normal-case tracking-normal"
+                    />
+                  </label>
                   <button
                     onClick={() => remove(entry.id)}
                     className="mt-3 text-sm text-rose-300 hover:text-rose-200"
