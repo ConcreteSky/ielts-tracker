@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+:root { --background: #09090b; --foreground: #f4f4f5; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; }
+.field { width: 100%; border: 1px solid rgb(63 63 70); border-radius: 0.75rem; background: rgb(24 24 27); padding: 0.7rem 0.8rem; color: rgb(244 244 245); outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; }
+.field:focus { border-color: rgb(139 92 246); box-shadow: 0 0 0 3px rgb(139 92 246 / 0.16); }
+.field::placeholder { color: rgb(113 113 122); }
