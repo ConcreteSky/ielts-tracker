@@ -38,7 +38,6 @@ const colors: Record<ChartSeries, string> = {
 };
 const filters: { id: ResultFilter; label: string }[] = [
   { id: "All", label: "All results" },
-  { id: "Writing", label: "Writing" },
   { id: "Task 1", label: "Writing · Task 1" },
   { id: "Task 2", label: "Writing · Task 2" },
   { id: "Speaking", label: "Speaking" },
