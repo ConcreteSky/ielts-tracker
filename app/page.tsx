@@ -27,6 +27,7 @@ type PracticeEntry = {
 };
 
 const storageKey = "ielts-score-tracker.practice-entries";
+const seedKey = "ielts-score-tracker.initial-scores-seeded";
 const scores = Array.from({ length: 19 }, (_, index) => index / 2);
 const skills: Skill[] = ["Writing", "Speaking", "Listening", "Reading"];
 const colors: Record<ChartSeries, string> = {
@@ -58,6 +59,26 @@ const emptyForm = (): Omit<PracticeEntry, "id"> => ({
   notes: "",
   writingTask: "Task 1",
 });
+const initialEntries: PracticeEntry[] = [
+  { id: "seed-listening-1", skill: "Listening", attempt: 1, title: "Listening practice", score: 8, notes: "" },
+  { id: "seed-listening-2", skill: "Listening", attempt: 2, title: "Listening practice", score: 8.5, notes: "" },
+  { id: "seed-listening-3", skill: "Listening", attempt: 3, title: "Listening practice", score: 8.5, notes: "" },
+  { id: "seed-reading-1", skill: "Reading", attempt: 1, title: "Reading practice", score: 8.5, notes: "" },
+  { id: "seed-reading-2", skill: "Reading", attempt: 2, title: "Reading practice", score: 8.5, notes: "" },
+  { id: "seed-reading-3", skill: "Reading", attempt: 3, title: "Reading practice", score: 9, notes: "" },
+  { id: "seed-speaking-1", skill: "Speaking", attempt: 1, title: "Speaking practice", score: 7.5, notes: "" },
+  { id: "seed-speaking-2", skill: "Speaking", attempt: 2, title: "Speaking practice", score: 8, notes: "" },
+  { id: "seed-speaking-3", skill: "Speaking", attempt: 3, title: "Speaking practice", score: 8.5, notes: "" },
+  { id: "seed-writing-task-1-1", skill: "Writing", writingTask: "Task 1", attempt: 1, title: "Line graph", score: 6, notes: "" },
+  { id: "seed-writing-task-1-2", skill: "Writing", writingTask: "Task 1", attempt: 2, title: "Bar chart", score: 6, notes: "" },
+  { id: "seed-writing-task-1-3", skill: "Writing", writingTask: "Task 1", attempt: 3, title: "Pie chart", score: 7, notes: "" },
+  { id: "seed-writing-task-1-4", skill: "Writing", writingTask: "Task 1", attempt: 4, title: "Maps", score: 6.5, notes: "" },
+  { id: "seed-writing-task-2-1", skill: "Writing", writingTask: "Task 2", attempt: 1, title: "Opinion essay", score: 5.5, notes: "" },
+  { id: "seed-writing-task-2-2", skill: "Writing", writingTask: "Task 2", attempt: 2, title: "Solution essay", score: 5.5, notes: "" },
+  { id: "seed-writing-task-2-3", skill: "Writing", writingTask: "Task 2", attempt: 3, title: "Discussion essay", score: 6, notes: "" },
+  { id: "seed-writing-task-2-4", skill: "Writing", writingTask: "Task 2", attempt: 4, title: "Advantages essay", score: 7, notes: "" },
+  { id: "seed-writing-task-2-5", skill: "Writing", writingTask: "Task 2", attempt: 5, title: "Question essay", score: 6.5, notes: "" },
+];
 const band = (value: number) => value.toFixed(1);
 const inferTask = (entry: PracticeEntry): WritingTask | undefined =>
   entry.skill === "Writing"
@@ -78,16 +99,18 @@ export default function Home() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const restored = JSON.parse(saved) as PracticeEntry[];
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setEntries(
-          restored.map((entry) => ({
-            ...entry,
-            writingTask: inferTask(entry),
-          })),
-        );
-      }
+      const restored = saved ? (JSON.parse(saved) as PracticeEntry[]) : [];
+      const normalized = restored.map((entry) => ({
+        ...entry,
+        writingTask: inferTask(entry),
+      }));
+      const shouldSeed = !localStorage.getItem(seedKey);
+      if (shouldSeed) localStorage.setItem(seedKey, "true");
+      const shouldApplyInitialEntries = shouldSeed && normalized.length === 0;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEntries(
+        shouldApplyInitialEntries ? [...normalized, ...initialEntries] : normalized,
+      );
     } catch {
       localStorage.removeItem(storageKey);
     } finally {
