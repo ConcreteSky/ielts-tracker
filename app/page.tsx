@@ -14,6 +14,8 @@ import {
 
 type Skill = "Writing" | "Speaking" | "Listening" | "Reading";
 type WritingTask = "Task 1" | "Task 2";
+type ResultFilter = "All" | Skill | WritingTask;
+type ChartSeries = Exclude<Skill, "Writing"> | "Writing Task 1" | "Writing Task 2";
 type PracticeEntry = {
   id: string;
   skill: Skill;
@@ -27,12 +29,22 @@ type PracticeEntry = {
 const storageKey = "ielts-score-tracker.practice-entries";
 const scores = Array.from({ length: 19 }, (_, index) => index / 2);
 const skills: Skill[] = ["Writing", "Speaking", "Listening", "Reading"];
-const colors: Record<Skill, string> = {
-  Writing: "#a78bfa",
+const colors: Record<ChartSeries, string> = {
+  "Writing Task 1": "#22d3ee",
+  "Writing Task 2": "#c084fc",
   Speaking: "#f472b6",
   Listening: "#38bdf8",
   Reading: "#a3e635",
 };
+const filters: { id: ResultFilter; label: string }[] = [
+  { id: "All", label: "All results" },
+  { id: "Writing", label: "Writing" },
+  { id: "Task 1", label: "Writing · Task 1" },
+  { id: "Task 2", label: "Writing · Task 2" },
+  { id: "Speaking", label: "Speaking" },
+  { id: "Listening", label: "Listening" },
+  { id: "Reading", label: "Reading" },
+];
 const taskOneTitles = new Set([
   "Graph essay",
   "Bar chart essay",
@@ -53,10 +65,15 @@ const inferTask = (entry: PracticeEntry): WritingTask | undefined =>
     ? (entry.writingTask ??
       (taskOneTitles.has(entry.title) ? "Task 1" : "Task 2"))
     : undefined;
+const chartSeries = (entry: PracticeEntry): ChartSeries =>
+  entry.skill === "Writing"
+    ? `Writing ${inferTask(entry) ?? "Task 2"}`
+    : entry.skill;
 
 export default function Home() {
   const [entries, setEntries] = useState<PracticeEntry[]>([]);
   const [form, setForm] = useState<Omit<PracticeEntry, "id">>(emptyForm);
+  const [selectedFilter, setSelectedFilter] = useState<ResultFilter>("All");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -89,13 +106,23 @@ export default function Home() {
       ),
     [entries],
   );
+  const visibleEntries = useMemo(
+    () =>
+      sortedEntries.filter((entry) => {
+        if (selectedFilter === "All") return true;
+        if (selectedFilter === "Task 1" || selectedFilter === "Task 2")
+          return entry.skill === "Writing" && inferTask(entry) === selectedFilter;
+        return entry.skill === selectedFilter;
+      }),
+    [selectedFilter, sortedEntries],
+  );
   const chartData = useMemo(
     () =>
-      sortedEntries.map((entry) => ({
+      visibleEntries.map((entry) => ({
         label: `${entry.skill} #${entry.attempt}`,
-        [entry.skill]: entry.score,
+        [chartSeries(entry)]: entry.score,
       })),
-    [sortedEntries],
+    [visibleEntries],
   );
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -153,7 +180,7 @@ export default function Home() {
           </div>
           <form
             onSubmit={submit}
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6"
           >
             <label className="text-sm font-medium text-zinc-300">
               Skill
@@ -227,32 +254,75 @@ export default function Home() {
                 ))}
               </select>
             </label>
+            {form.skill === "Writing" && (
+              <label className="text-sm font-medium text-zinc-300">
+                Writing task
+                <select
+                  aria-label="Writing task"
+                  value={form.writingTask}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      writingTask: e.target.value as WritingTask,
+                    }))
+                  }
+                  className="field mt-2"
+                >
+                  <option>Task 1</option>
+                  <option>Task 2</option>
+                </select>
+              </label>
+            )}
+            <label className="text-sm font-medium text-zinc-300 sm:col-span-2 lg:col-span-3">
+              Notes & improvements
+              <textarea
+                aria-label="Notes and improvements"
+                value={form.notes}
+                onChange={(e) =>
+                  setForm((current) => ({ ...current, notes: e.target.value }))
+                }
+                placeholder="What went well? What will you improve next time?"
+                rows={3}
+                className="field mt-2"
+              />
+            </label>
             <button
               type="submit"
-              className="self-end rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-400"
+              className="self-end rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-400 lg:col-span-1"
             >
               Add result
             </button>
           </form>
-          {form.skill === "Writing" && (
-            <label className="mt-4 block max-w-xs text-sm font-medium text-zinc-300">
-              Writing task
-              <select
-                aria-label="Writing task"
-                value={form.writingTask}
-                onChange={(e) =>
-                  setForm((current) => ({
-                    ...current,
-                    writingTask: e.target.value as WritingTask,
-                  }))
-                }
-                className="field mt-2"
+        </section>
+        <section className="mt-6 rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white">View results</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Choose the practice results you want to review.
+              </p>
+            </div>
+            <p className="text-sm text-zinc-400">
+              {visibleEntries.length} {visibleEntries.length === 1 ? "result" : "results"}
+            </p>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2" aria-label="Result filters">
+            {filters.map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                aria-pressed={selectedFilter === filter.id}
+                onClick={() => setSelectedFilter(filter.id)}
+                className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
+                  selectedFilter === filter.id
+                    ? "border-violet-400 bg-violet-400/15 text-violet-100"
+                    : "border-white/[0.1] bg-zinc-950/40 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
+                }`}
               >
-                <option>Task 1</option>
-                <option>Task 2</option>
-              </select>
-            </label>
-          )}
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </section>
         <section className="mt-6 rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5 sm:p-7">
           <h2 className="text-lg font-semibold text-white">
@@ -293,7 +363,7 @@ export default function Home() {
                     itemStyle={{ color: "#e4e4e7" }}
                   />
                   <Legend wrapperStyle={{ paddingTop: 16, fontSize: 12 }} />
-                  {skills.map((skill) => (
+                  {(Object.keys(colors) as ChartSeries[]).map((skill) => (
                     <Line
                       key={skill}
                       type="monotone"
@@ -320,19 +390,37 @@ export default function Home() {
           <p className="mt-1 text-sm text-zinc-500">
             Each piece is kept separate. Writing entries show Task 1 or Task 2.
           </p>
-          {sortedEntries.length ? (
+          {visibleEntries.length ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedEntries.map((entry) => (
+              {visibleEntries.map((entry) => (
                 <article
                   key={entry.id}
-                  className="rounded-2xl border border-white/[0.09] bg-zinc-900/50 p-5"
+                  className={`rounded-2xl border bg-zinc-900/50 p-5 ${
+                    inferTask(entry) === "Task 1"
+                      ? "border-cyan-400/30"
+                      : inferTask(entry) === "Task 2"
+                        ? "border-violet-400/30"
+                        : "border-white/[0.09]"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-violet-300">
-                        {entry.skill} · Attempt #{entry.attempt}
-                        {entry.writingTask ? ` · ${entry.writingTask}` : ""}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-violet-300">
+                          {entry.skill} · Attempt #{entry.attempt}
+                        </p>
+                        {inferTask(entry) && (
+                          <span
+                            className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                              inferTask(entry) === "Task 1"
+                                ? "bg-cyan-400/15 text-cyan-200"
+                                : "bg-violet-400/15 text-violet-200"
+                            }`}
+                          >
+                            {inferTask(entry)}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-2 font-medium text-white">
                         {entry.title}
                       </p>
@@ -341,25 +429,16 @@ export default function Home() {
                       {band(entry.score)}
                     </span>
                   </div>
-                  <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-zinc-500">
-                    Mistakes & improvements
-                    <textarea
-                      aria-label={`Notes for ${entry.title}`}
-                      value={entry.notes}
-                      onChange={(e) =>
-                        setEntries((current) =>
-                          current.map((item) =>
-                            item.id === entry.id
-                              ? { ...item, notes: e.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                      placeholder="Add your notes..."
-                      rows={3}
-                      className="field mt-2 normal-case tracking-normal"
-                    />
-                  </label>
+                  {entry.notes && (
+                    <div className="mt-4 rounded-xl bg-white/[0.04] p-3">
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                        Notes & improvements
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
+                        {entry.notes}
+                      </p>
+                    </div>
+                  )}
                   <button
                     onClick={() => remove(entry.id)}
                     className="mt-3 text-sm text-rose-300 hover:text-rose-200"
@@ -371,7 +450,9 @@ export default function Home() {
             </div>
           ) : (
             <div className="mt-5 rounded-2xl border border-dashed border-white/[0.1] py-12 text-center text-sm text-zinc-600">
-              Your practice scores will appear here.
+              {entries.length
+                ? "No practice results match this filter."
+                : "Your practice scores will appear here."}
             </div>
           )}
         </section>
